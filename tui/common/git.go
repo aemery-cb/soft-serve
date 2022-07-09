@@ -13,4 +13,5 @@ type GitRepo interface {
 	Diff(*git.Commit) (*git.Diff, error)
 	References() ([]*git.Reference, error)
 	Tree(*git.Reference, string) (*git.Tree, error)
+	Path() string
 }

@@ -2,7 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
 	"strings"
+	"syscall"
+	"unsafe"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -11,6 +16,7 @@ import (
 	"github.com/charmbracelet/soft-serve/internal/tui/bubbles/selection"
 	"github.com/charmbracelet/soft-serve/internal/tui/style"
 	"github.com/charmbracelet/soft-serve/tui/common"
+	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
 )
 
@@ -60,6 +66,44 @@ type Bubble struct {
 	lastResize tea.WindowSizeMsg
 }
 
+func setWinsize(f *os.File, w, h int) {
+	syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCSWINSZ),
+		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(h), uint16(w), 0, 0})))
+}
+
+func (b *Bubble) openEditor(filepath string) tea.Cmd {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vim"
+	}
+	c := exec.Command(editor, filepath)
+
+	ptyReq, winCh, active := b.session.Pty()
+	if !active {
+		fmt.Println("no pty")
+	}
+	c.Env = append(c.Env, fmt.Sprintf("TERM=%s", ptyReq.Term))
+
+	f, err := pty.Start(c)
+	if err != nil {
+		fmt.Println("10/10 error handling")
+	}
+	setWinsize(f, b.width, b.height)
+	go func() {
+		for win := range winCh {
+			setWinsize(f, win.Width, win.Height)
+		}
+	}()
+
+	go func() {
+		io.Copy(f, b.session)
+	}()
+	io.Copy(b.session, f)
+	c.Wait()
+	f.Close()
+	return func() tea.Msg { return tea.WindowSizeMsg{Width: b.width, Height: b.height} }
+}
+
 func NewBubble(cfg *config.Config, sCfg *SessionConfig) *Bubble {
 	b := &Bubble{
 		config:      cfg,
@@ -106,6 +150,9 @@ func (b *Bubble) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+
+	case common.EditFileMsg:
+		return b, b.openEditor(msg.FilePath)
 	case selection.SelectedMsg:
 		b.activeBox = 1
 		rb := b.repoMenu[msg.Index].bubble
@@ -164,9 +211,7 @@ func (b Bubble) footerView() string {
 		}
 		if box, ok := b.boxes[b.activeBox].(common.BubbleHelper); ok {
 			help := box.Help()
-			for _, he := range help {
-				h = append(h, he)
-			}
+			h = append(h, help...)
 		}
 	}
 	h = append(h, common.HelpEntry{Key: "q", Value: "quit"})

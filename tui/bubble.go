@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/soft-serve/internal/tui/style"
 	"github.com/charmbracelet/soft-serve/tui/about"
 	"github.com/charmbracelet/soft-serve/tui/common"
+	"github.com/charmbracelet/soft-serve/tui/hooks"
 	"github.com/charmbracelet/soft-serve/tui/log"
 	"github.com/charmbracelet/soft-serve/tui/refs"
 	"github.com/charmbracelet/soft-serve/tui/tree"
@@ -23,6 +24,7 @@ const (
 	refsState
 	logState
 	treeState
+	hooksState
 )
 
 type Bubble struct {
@@ -46,13 +48,14 @@ func NewBubble(repo common.GitRepo, styles *style.Styles, width, wm, height, hm 
 		height:       height,
 		heightMargin: hm,
 		style:        styles,
-		boxes:        make([]tea.Model, 4),
+		boxes:        make([]tea.Model, 5),
 	}
 	heightMargin := hm + lipgloss.Height(b.headerView())
 	b.boxes[aboutState] = about.NewBubble(repo, b.style, b.width, wm, b.height, heightMargin)
 	b.boxes[refsState] = refs.NewBubble(repo, b.style, b.width, wm, b.height, heightMargin)
 	b.boxes[logState] = log.NewBubble(repo, b.style, width, wm, height, heightMargin)
 	b.boxes[treeState] = tree.NewBubble(repo, b.style, width, wm, height, heightMargin)
+	b.boxes[hooksState] = hooks.NewBubble(repo, b.style, b.width, b.height)
 	return b
 }
 
@@ -74,8 +77,11 @@ func (b *Bubble) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				b.state = logState
 			case "F":
 				b.state = treeState
+			case "H":
+				b.state = hooksState
 			}
 		}
+
 	case tea.WindowSizeMsg:
 		b.width = msg.Width
 		b.height = msg.Height
@@ -113,6 +119,7 @@ func (b *Bubble) Help() []common.HelpEntry {
 		h = append(h, common.HelpEntry{Key: "F", Value: "files"})
 		h = append(h, common.HelpEntry{Key: "C", Value: "commits"})
 		h = append(h, common.HelpEntry{Key: "B", Value: "branches"})
+		h = append(h, common.HelpEntry{Key: "H", Value: "hooks"})
 	}
 	return h
 }
